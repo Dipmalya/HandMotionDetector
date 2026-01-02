@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Web Motion Detector</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 1rem; }
+    video, canvas { border: 1px solid #ccc; max-width: 100%; height: auto; }
+    #status { margin-top: 0.5rem; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h2>Web Motion Detector (Webcam)</h2>
+  <p>Allow webcam access when prompted. This demo sends periodic frames to the server for motion detection and displays text output.</p>
+
+  <video id="video" autoplay playsinline width="640" height="480"></video>
+  <canvas id="canvas" style="display:none;"></canvas>
+
+  <div id="status">Status: <span id="statustext">Not connected</span></div>
+  <div>Movement output: <span id="movement">—</span></div>
+
+  <!-- socket.io client from CDN -->
+  <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const movementEl = document.getElementById('movement');
+    const statusText = document.getElementById('statustext');
+
+    const socket = io();
+
+    socket.on('connect', () => {
+      statusText.innerText = 'Connected';
+    });
+    socket.on('disconnect', () => {
+      statusText.innerText = 'Disconnected';
+    });
+
+    socket.on('movement', (msg) => {
+      if (msg && msg.text) {
+        movementEl.innerText = msg.text + ' (score: ' + (msg.score||0) + ')';
+      }
+    });
+
+    async function startCamera(){
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        video.srcObject = stream;
+        await video.play();
+        startSendingFrames();
+      } catch (e) {
+        statusText.innerText = 'No camera or permission denied';
+        console.error(e);
+      }
+    }
+
+    function startSendingFrames(){
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      const ctx = canvas.getContext('2d');
+
+      // send frame every 200ms (5 fps)
+      setInterval(() => {
+        try {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          // compress to JPEG to reduce bandwidth
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+          socket.emit('frame', { image: dataUrl });
+        } catch (e) {
+          console.error('frame send error', e);
+        }
+      }, 200);
+    }
+
+    startCamera();
+  </script>
+</body>
+</html>
